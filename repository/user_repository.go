@@ -25,7 +25,7 @@ func NewUserRepository(pool *pgxpool.Pool) *UserRepository {
 	return &UserRepository{pool: pool}
 }
 
-func (r *UserRepository) CreateUsers(ctx context.Context, w http.ResponseWriter, u *User, log slog.Logger) error {
+func (r *UserRepository) CreateUser(ctx context.Context, w http.ResponseWriter, u *User, log slog.Logger) error {
 	log.Info("Creating user", "name", u.Name, "email", u.Email)
 	if u.CreatedAt.IsZero() {
 		u.CreatedAt = time.Now()
@@ -48,7 +48,7 @@ func (r *UserRepository) CreateUsers(ctx context.Context, w http.ResponseWriter,
 	return nil
 }
 
-func (r *UserRepository) GetUserWithID(ctx context.Context, w http.ResponseWriter, id int, log *slog.Logger) error {
+func (r *UserRepository) GetTaskWithUserID(ctx context.Context, w http.ResponseWriter, id int, log *slog.Logger) error {
 	rows, err := r.pool.Query(ctx, `Select title,discription from tasks where user_id = $1`, id)
 	if err != nil {
 		log.Warn("DB insert failed", "error", err)

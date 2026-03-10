@@ -9,8 +9,8 @@ func RegisterRoutes(userHandler *handlers.UserHandler, taskHandler *handlers.Tas
 	r := chi.NewRouter()
 
 	r.Post("/users", userHandler.CreateUser)
-	r.Post("/tasks", taskHandler.Tasks)
-	r.Get("/users/{id}/tasks", userHandler.HandlerGetUserWithID)
+	r.Post("/tasks", taskHandler.CreateTask)
+	r.Get("/users/{id}/tasks", userHandler.GetTaskWithUserID)
 
 	return r
 }

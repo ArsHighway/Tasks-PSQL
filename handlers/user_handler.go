@@ -35,12 +35,12 @@ func (h *UserHandler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Problem with decoding", http.StatusNotFound)
 		log.Warn("JSON decoding failed", "error", err)
 	}
-	if err := h.repo.CreateUsers(ctx, w, &u, *log); err != nil {
-		log.Warn("failed to create user", &u, "error", err)
+	if err := h.repo.CreateUser(ctx, w, &u, *log); err != nil {
+		log.Warn("failed to create user", "user", u, "error", err)
 	}
 }
 
-func (h *UserHandler) HandlerGetUserWithID(w http.ResponseWriter, r *http.Request) {
+func (h *UserHandler) GetTaskWithUserID(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 	log := slog.With("handler", "GetUserWithID", "request_method", r.Method)
@@ -52,10 +52,10 @@ func (h *UserHandler) HandlerGetUserWithID(w http.ResponseWriter, r *http.Reques
 	id, err := strconv.Atoi(chi.URLParam(r, "id"))
 	if err != nil {
 		http.Error(w, "Сonversion error", http.StatusNotFound)
-		log.Warn("Сonversion error")
+		log.Warn("Сonversion error", "error", err)
 		return
 	}
-	if err := h.repo.GetUserWithID(ctx, w, id, log); err != nil {
+	if err := h.repo.GetTaskWithUserID(ctx, w, id, log); err != nil {
 		log.Warn("Failed to get user tasks", "user_id", id, "error", err)
 	}
 }
