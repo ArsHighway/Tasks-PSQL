@@ -3,10 +3,14 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -82,4 +86,70 @@ func (r *UserRepository) GetTaskWithUserID(ctx context.Context, w http.ResponseW
 	}
 	log.Info("user tasks found", "tasks", tasks)
 	return nil
+}
+
+func (r *UserRepository) GetUserWithID(ctx context.Context, id int, log slog.Logger) (*User, error) {
+	log.Info("Get user", "userID", id)
+	var u User
+	err := r.pool.QueryRow(ctx, `SELECT * FROM users WHERE id = $1`, id).Scan(&u.ID, &u.Name, &u.Email, &u.CreatedAt)
+	if err != nil {
+		log.Warn("DB select failed")
+		return nil, err
+	}
+	return &u, nil
+
+}
+
+func (r *UserRepository) PatchUser(ctx context.Context, id int, updates map[string]interface{}, log slog.Logger) (*User, error) {
+	log.Info("Update user", "userID", id)
+	var u User
+	c := 1
+	var args []interface{}
+	var values []string
+	allowed := map[string]bool{
+		"name":  true,
+		"email": true,
+		"age":   true,
+	}
+	for k, v := range updates {
+		if !allowed[k] {
+			continue
+		}
+		args = append(args, v)
+		values = append(values, fmt.Sprintf("%v=$%d", k, c))
+		c++
+	}
+	if len(values) == 0 {
+		return nil, errors.New("no valid fields to update")
+	}
+	args = append(args, id)
+	sql := fmt.Sprintf("UPDATE users SET %s WHERE id = $%d", strings.Join(values, ", "), c)
+	cmdTag, err := r.pool.Exec(ctx, sql, args...)
+	if err != nil {
+		log.Warn("DB updaet failed")
+		return nil, err
+	}
+	if cmdTag.RowsAffected() == 0 {
+		log.Warn("User not found", "userID", id)
+		return nil, pgx.ErrNoRows
+	}
+	err = r.pool.QueryRow(ctx, `SELECT * FROM users WHERE id = $1`, id).Scan(&u.ID, &u.Name, &u.Email, &u.CreatedAt)
+	if err != nil {
+		log.Warn("DB insert failed", "error", err)
+		return nil, err
+	}
+	return &u, nil
+}
+
+func (r *UserRepository) DeleteUser(ctx context.Context, id int, log slog.Logger) error {
+	cmdTag, err := r.pool.Exec(ctx, `DELETE FROM users WHERE id = $1`, id)
+	if err != nil {
+		log.Warn("DB updaet failed")
+		return err
+	}
+	if cmdTag.RowsAffected() == 0 {
+		log.Warn("User not founded", "user", id)
+		return pgx.ErrNoRows
+	}
+	return err
 }

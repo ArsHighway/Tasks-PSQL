@@ -2,7 +2,6 @@ package repository
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -15,12 +14,12 @@ import (
 )
 
 type Task struct {
-	ID          int
-	Title       string
-	Description string
-	Status      string
-	UserID      int
-	CreatedAt   time.Time
+	ID          int       `json:"id"`
+	Title       string    `json:"title"`
+	Description string    `json:"description"`
+	Status      string    `json:"status"`
+	UserID      int       `json:"user_id"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 type TaskRepository struct {
@@ -31,27 +30,35 @@ func NewTaskRepository(pool *pgxpool.Pool) *TaskRepository {
 	return &TaskRepository{pool: pool}
 }
 
-func (r *TaskRepository) CreateTask(ctx context.Context, w http.ResponseWriter, t *Task, log slog.Logger) error {
-	log.Info("Creating task", "task", t.Title, "status", t.Status)
+func (r *TaskRepository) CreateTask(ctx context.Context, t *Task, log slog.Logger) (*Task, error) {
+	log.Info("Creating task",
+		"title", t.Title,
+		"user_id", t.UserID,
+	)
+
 	if t.CreatedAt.IsZero() {
 		t.CreatedAt = time.Now()
 	}
-	var id int
-	err := r.pool.QueryRow(ctx, `INSERT INTO tasks (title,description,status,user_id,created_at) VALUES ($1,$2,$3,$4,$5) RETURNING id`, t.Title, t.Description, t.Status, t.UserID, t.CreatedAt).Scan(&id)
+
+	err := r.pool.QueryRow(
+		ctx,
+		`INSERT INTO tasks (title, description, status, user_id, created_at)
+		 VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+		t.Title,
+		t.Description,
+		t.Status,
+		t.UserID,
+		t.CreatedAt,
+	).Scan(&t.ID)
+
 	if err != nil {
-		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-		log.Warn("DB insert failed", "error", err)
-		return err
+		log.Error("DB insert failed", "error", err)
+		return nil, err
 	}
-	t.ID = id
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(t); err != nil {
-		http.Error(w, "Problem with encode", http.StatusNotFound)
-		log.Warn("JSON encoding faling", "error", err)
-		return err
-	}
-	log.Info("Task created successfully", "id", t.ID)
-	return nil
+
+	log.Info("Task created", "taskID", t.ID)
+
+	return t, nil
 }
 
 func (r *TaskRepository) GetTaskWithID(ctx context.Context, w http.ResponseWriter, id int, log slog.Logger) (*Task, error) {
@@ -142,4 +149,67 @@ func (r *TaskRepository) DeleteTask(ctx context.Context, w http.ResponseWriter, 
 		return pgx.ErrNoRows
 	}
 	return nil
+}
+
+// func (r *TaskRepository) GetTasks(ctx context.Context, status string, log slog.Logger) (*[]Task, error) {
+// 	log.Info("Get tasks", "status", status)
+// 	rows, err := r.pool.Query(ctx, `SELECT id,title,description,status,user_id FROM tasks WHERE status = $1`, status)
+// 	if err != nil {
+// 		log.Error("DB query failed", "error", err)
+// 		return nil, err
+// 	}
+// 	var t Task
+// 	var tasks []Task
+// 	defer rows.Close()
+// 	for rows.Next() {
+// 		err := rows.Scan(
+// 			&t.ID,
+// 			&t.Title,
+// 			&t.Description,
+// 			&t.Status,
+// 			&t.UserID,
+// 		)
+// 		tasks = append(tasks, t)
+// 		if err != nil {
+// 			log.Warn("Problem with scan", "error", err)
+// 			return nil, err
+// 		}
+// 	}
+// 	if len(tasks) == 0 {
+// 		log.Warn("Task no found", "status", status)
+// 		return nil, pgx.ErrNoRows
+// 	}
+// 	return &tasks, nil
+// }
+
+func (r *TaskRepository) GetTasks(ctx context.Context, args []any, baseQuery string, log *slog.Logger) ([]Task, error) {
+	log.Info("Get tasks")
+	rows, err := r.pool.Query(ctx, baseQuery, args...)
+	if err != nil {
+		log.Error("DB query failed", "error", err)
+		return nil, err
+	}
+	defer rows.Close()
+	tasks := []Task{}
+	for rows.Next() {
+		var t Task
+		err := rows.Scan(
+			&t.ID,
+			&t.Title,
+			&t.Description,
+			&t.Status,
+			&t.UserID,
+			&t.CreatedAt,
+		)
+		if err != nil {
+			log.Warn("Failed to scan tasks")
+			return nil, err
+		}
+		tasks = append(tasks, t)
+	}
+	if len(tasks) == 0 {
+		log.Warn("Tasks no found")
+		return nil, pgx.ErrNoRows
+	}
+	return tasks, nil
 }
