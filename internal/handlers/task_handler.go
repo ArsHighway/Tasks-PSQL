@@ -4,26 +4,35 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
 
-	"github.com/ArsHighway/Tasks-PSQL/repository"
+	"github.com/ArsHighway/Tasks-PSQL/internal/models"
+	"github.com/ArsHighway/Tasks-PSQL/internal/service"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 )
 
-type TaskHandler struct {
-	repo *repository.TaskRepository
+type taskHandler struct {
+	serv service.TaskService
 }
 
-func NewTaskHandler(repo *repository.TaskRepository) *TaskHandler {
-	return &TaskHandler{repo: repo}
+func NewTaskHandler(serv service.TaskService) *taskHandler {
+	return &taskHandler{serv: serv}
 }
 
-func (h *TaskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
+type TaskHandler interface {
+	CreateTask(w http.ResponseWriter, r *http.Request)
+	GetTaskWithID(w http.ResponseWriter, r *http.Request)
+	UpdateTask(w http.ResponseWriter, r *http.Request)
+	PatchTask(w http.ResponseWriter, r *http.Request)
+	DeleteTask(w http.ResponseWriter, r *http.Request)
+	GetTasks(w http.ResponseWriter, r *http.Request)
+}
+
+func (h *taskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
@@ -35,15 +44,18 @@ func (h *TaskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var t repository.Task
+	var t models.Task
 
 	if err := json.NewDecoder(r.Body).Decode(&t); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		log.Warn("JSON decoding failed", "error", err)
 		return
 	}
-
-	task, err := h.repo.CreateTask(ctx, &t, *log)
+	log.Info("Creating task",
+		"title", t.Title,
+		"user_id", t.UserID,
+	)
+	task, err := h.serv.CreateTask(ctx, &t)
 	if err != nil {
 		http.Error(w, "Failed to create task", http.StatusInternalServerError)
 		log.Error("Create task failed", "error", err)
@@ -53,7 +65,7 @@ func (h *TaskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 
-	if err := json.NewEncoder(w).Encode(task); err != nil {
+	if err = json.NewEncoder(w).Encode(task); err != nil {
 		log.Warn("JSON encoding failed", "error", err)
 		return
 	}
@@ -61,7 +73,7 @@ func (h *TaskHandler) CreateTask(w http.ResponseWriter, r *http.Request) {
 	log.Info("Task created successfully", "taskID", task.ID)
 }
 
-func (h *TaskHandler) GetTaskWithID(w http.ResponseWriter, r *http.Request) {
+func (h *taskHandler) GetTaskWithID(w http.ResponseWriter, r *http.Request) {
 	log := slog.With("handler", "GetTaskWithID",
 		"request_method", r.Method)
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
@@ -77,14 +89,15 @@ func (h *TaskHandler) GetTaskWithID(w http.ResponseWriter, r *http.Request) {
 		log.Warn("Сonversion error", "error", err)
 		return
 	}
-	t, err := h.repo.GetTaskWithID(ctx, w, id, *log)
+	log.Info("Get task", "taskID", id)
+	t, err := h.serv.GetTaskWithID(ctx, id)
 	if err != nil {
 		http.Error(w, "Failed to get Task", http.StatusInternalServerError)
 		log.Warn("Failed to get Task")
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(t); err != nil {
+	if err = json.NewEncoder(w).Encode(t); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			http.Error(w, "Task not found", http.StatusNotFound)
 		} else {
@@ -96,7 +109,7 @@ func (h *TaskHandler) GetTaskWithID(w http.ResponseWriter, r *http.Request) {
 	log.Info("task received", "task", t.Title)
 }
 
-func (h *TaskHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
+func (h *taskHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 	log := slog.With("handler", "UpdateTask",
 		"request_method", r.Method)
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
@@ -112,14 +125,15 @@ func (h *TaskHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 		log.Warn("Сonversion error", "error", err)
 		return
 	}
-	var task repository.Task
+	var task models.Task
 	err = json.NewDecoder(r.Body).Decode(&task)
 	if err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		log.Warn("JSON decoding failed", "error", err)
 		return
 	}
-	t, err := h.repo.UpdateTask(ctx, w, id, &task, *log)
+	log.Info("Update task", "taskID", id)
+	t, err := h.serv.UpdateTask(ctx, id, &task)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			http.Error(w, "Task not found", http.StatusNotFound)
@@ -130,7 +144,7 @@ func (h *TaskHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(t); err != nil {
+	if err = json.NewEncoder(w).Encode(t); err != nil {
 		http.Error(w, "Problem with encode", http.StatusNotFound)
 		log.Warn("JSON encoding faling", "error", err)
 		return
@@ -138,7 +152,7 @@ func (h *TaskHandler) UpdateTask(w http.ResponseWriter, r *http.Request) {
 	log.Info("task updated", "task", t.Title)
 }
 
-func (h *TaskHandler) PatchTask(w http.ResponseWriter, r *http.Request) {
+func (h *taskHandler) PatchTask(w http.ResponseWriter, r *http.Request) {
 	log := slog.With("handler", "UpdateTask",
 		"request_method", r.Method)
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
@@ -161,7 +175,8 @@ func (h *TaskHandler) PatchTask(w http.ResponseWriter, r *http.Request) {
 		log.Warn("JSON decoding failed", "error", err)
 		return
 	}
-	t, err := h.repo.PatchTask(ctx, w, id, updates, *log)
+	log.Info("Patch task", "taskID", id)
+	t, err := h.serv.PatchTask(ctx, id, updates)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			http.Error(w, "Task no found", http.StatusNotFound)
@@ -172,7 +187,7 @@ func (h *TaskHandler) PatchTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(t); err != nil {
+	if err = json.NewEncoder(w).Encode(t); err != nil {
 		http.Error(w, "Problem with encode", http.StatusNotFound)
 		log.Warn("JSON encoding faling", "error", err)
 		return
@@ -180,7 +195,7 @@ func (h *TaskHandler) PatchTask(w http.ResponseWriter, r *http.Request) {
 	log.Info("task patch", "task", t.Title)
 }
 
-func (h *TaskHandler) DeleteTask(w http.ResponseWriter, r *http.Request) {
+func (h *taskHandler) DeleteTask(w http.ResponseWriter, r *http.Request) {
 	log := slog.With("handler", "DeleteTask",
 		"request_method", r.Method)
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
@@ -196,8 +211,8 @@ func (h *TaskHandler) DeleteTask(w http.ResponseWriter, r *http.Request) {
 		log.Warn("Сonversion error", "error", err)
 		return
 	}
-
-	err = h.repo.DeleteTask(ctx, w, id, *log)
+	log.Info("Update task", "taskID", id)
+	err = h.serv.DeleteTask(ctx, id)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			http.Error(w, "Task no found", http.StatusNotFound)
@@ -213,45 +228,14 @@ func (h *TaskHandler) DeleteTask(w http.ResponseWriter, r *http.Request) {
 		"message": "Task deleted successfully",
 		"taskID":  id,
 	}
-	if err := json.NewEncoder(w).Encode(resp); err != nil {
+	if err = json.NewEncoder(w).Encode(resp); err != nil {
 		log.Warn("JSON encoding failed", "error", err)
 	}
 
 	log.Info("Task delete", "task", id)
 }
 
-// func (h *TaskHandler) GetTasks(w http.ResponseWriter, r *http.Request) {
-// 	log := slog.With("handler", "TaskHandler", "method", r.Method)
-// 	ctx, cancle := context.WithTimeout(context.Background(), time.Second*10)
-// 	defer cancle()
-// 	if r.Method != http.MethodGet {
-// 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-// 		log.Warn("Method not allowed")
-// 		return
-// 	}
-// 	status := r.URL.Query().Get("status")
-// 	t, err := h.repo.GetTasks(ctx, status, *log)
-// 	if err != nil {
-// 		if errors.Is(err, pgx.ErrNoRows) {
-// 			http.Error(w, "Task no found", http.StatusNotFound)
-// 		} else {
-// 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
-// 		}
-// 		log.Warn("Failed to update Task", "error", err)
-// 		return
-// 	}
-// 	w.Header().Set("Content-Type", "application/json")
-// 	w.WriteHeader(http.StatusOK)
-// 	err = json.NewEncoder(w).Encode(t)
-// 	if err != nil {
-// 		log.Warn("JSON encoding failed", "error", err)
-// 		return
-// 	}
-// 	log.Info("task received", "status", status)
-
-// }
-
-func (h *TaskHandler) GetTasks(w http.ResponseWriter, r *http.Request) {
+func (h *taskHandler) GetTasks(w http.ResponseWriter, r *http.Request) {
 	log := slog.With("handler", "GetTasks", "method", r.Method)
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -261,58 +245,8 @@ func (h *TaskHandler) GetTasks(w http.ResponseWriter, r *http.Request) {
 	ctx, cancle := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancle()
 	params := r.URL.Query()
-	baseQuery := "SELECT * FROM tasks WHERE 1=1"
-	args := []any{}
-	if status := params.Get("status"); status != "" {
-		baseQuery += fmt.Sprintf(" AND status = $%d", len(args)+1)
-		args = append(args, status)
-	}
-	if userID := params.Get("user_id"); userID != "" {
-		baseQuery += fmt.Sprintf(" AND user_id = $%d", len(args)+1)
-		args = append(args, userID)
-	}
-	if createAt := params.Get("created_at"); createAt != "" {
-		baseQuery += fmt.Sprintf(" AND created_at = $%d", len(args)+1)
-		args = append(args, createAt)
-	}
-	allowed := map[string]bool{
-		"status":     true,
-		"user_id":    true,
-		"created_at": true,
-	}
-	sortBy := params.Get("sort_by")
-	orderBy := params.Get("order")
-	if sortBy != "" && allowed[sortBy] {
-		if orderBy != "desc" {
-			orderBy = "asc"
-		}
-		baseQuery += fmt.Sprintf(" ORDER BY %s %s", sortBy, orderBy)
-	} else {
-		baseQuery += " ORDER BY created_at DESC"
-		log.Warn("not allowed or parametr is null")
-	}
-
-	limit := 10
-	page := 1
-	if l := params.Get("limit"); l != "" {
-		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 100 {
-			limit = parsed
-		} else {
-			http.Error(w, "Problem to convertation", http.StatusBadRequest)
-			log.Warn("Problem to convertation")
-		}
-	}
-	if p := params.Get("page"); p != "" {
-		if parsed, err := strconv.Atoi(p); err == nil && parsed > 0 {
-			page = parsed
-		} else {
-			http.Error(w, "Problem to convertation", http.StatusBadRequest)
-			log.Warn("Problem to convertation")
-		}
-	}
-	baseQuery += fmt.Sprintf(" LIMIT %d OFFSET %d", limit, (page-1)*limit)
-
-	t, err := h.repo.GetTasks(ctx, args, baseQuery, log)
+	log.Info("Get tasks")
+	t, err := h.serv.GetTasks(ctx, params)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			http.Error(w, "Task no found", http.StatusNotFound)

@@ -5,8 +5,9 @@ import (
 	"net/http"
 
 	"github.com/ArsHighway/Tasks-PSQL/config"
-	"github.com/ArsHighway/Tasks-PSQL/handlers"
-	"github.com/ArsHighway/Tasks-PSQL/repository"
+	"github.com/ArsHighway/Tasks-PSQL/internal/handlers"
+	"github.com/ArsHighway/Tasks-PSQL/internal/repository"
+	"github.com/ArsHighway/Tasks-PSQL/internal/service"
 	"github.com/ArsHighway/Tasks-PSQL/routers"
 )
 
@@ -16,9 +17,11 @@ func main() {
 
 	userRepo := repository.NewUserRepository(pool)
 	taskRepo := repository.NewTaskRepository(pool)
+	taskServ := service.NewTaskService(taskRepo)
+	userServ := service.NewUserService(userRepo, taskRepo)
 
-	userHandler := handlers.NewUserHandler(userRepo)
-	taskHandler := handlers.NewTaskHandler(taskRepo)
+	userHandler := handlers.NewUserHandler(userServ)
+	taskHandler := handlers.NewTaskHandler(taskServ)
 
 	r := routers.RegisterRoutes(userHandler, taskHandler)
 
