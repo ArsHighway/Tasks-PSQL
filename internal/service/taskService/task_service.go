@@ -1,4 +1,4 @@
-package service
+package task
 
 import (
 	"context"
@@ -8,26 +8,27 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/ArsHighway/Tasks-PSQL/internal/errs"
 	"github.com/ArsHighway/Tasks-PSQL/internal/models"
-	"github.com/ArsHighway/Tasks-PSQL/internal/newerr"
-	"github.com/ArsHighway/Tasks-PSQL/internal/repository"
+	task "github.com/ArsHighway/Tasks-PSQL/internal/repository/taskRepository"
 	"github.com/jackc/pgx/v5"
 )
 
 type taskService struct {
-	repo repository.TaskRepository
+	repo task.TaskRepository
 }
 
 type TaskService interface {
-	GetTasks(ctx context.Context, params url.Values) ([]models.Task, error)
-	CreateTask(ctx context.Context, t *models.Task) (*models.Task, error)
 	GetTaskWithID(ctx context.Context, id int) (*models.Task, error)
+	GetTasks(ctx context.Context, params url.Values) ([]models.Task, error)
+	GetTasksByUserID(ctx context.Context, userID int) ([]models.Task, error)
+	CreateTask(ctx context.Context, t *models.Task) (*models.Task, error)
 	UpdateTask(ctx context.Context, id int, t *models.Task) (*models.Task, error)
 	PatchTask(ctx context.Context, id int, updates map[string]interface{}) (*models.Task, error)
 	DeleteTask(ctx context.Context, id int) error
 }
 
-func NewTaskService(repo repository.TaskRepository) *taskService {
+func NewTaskService(repo task.TaskRepository) *taskService {
 	return &taskService{repo: repo}
 }
 
@@ -56,11 +57,11 @@ func (s *taskService) GetTaskWithID(ctx context.Context, id int) (*models.Task, 
 func (s *taskService) UpdateTask(ctx context.Context, id int, t *models.Task) (*models.Task, error) {
 	task, err := s.repo.UpdateTask(ctx, id, t)
 	if err != nil {
-		if errors.Is(err, newerr.ErrTaskNotFound) {
-			return nil, newerr.ErrTaskNotFound
+		if errors.Is(err, errs.ErrTaskNotFound) {
+			return nil, errs.ErrTaskNotFound
 		}
-		if errors.Is(err, newerr.ErrInvalidTask) {
-			return nil, newerr.ErrInvalidTask
+		if errors.Is(err, errs.ErrInvalidTask) {
+			return nil, errs.ErrInvalidTask
 		}
 		return nil, err
 	}
@@ -86,11 +87,11 @@ func (s *taskService) PatchTask(ctx context.Context, id int, updates map[string]
 	}
 	task, err := s.repo.PatchTask(ctx, id, updates, parts, arg)
 	if err != nil {
-		if errors.Is(err, newerr.ErrInvalidTask) {
-			return nil, newerr.ErrInvalidTask
+		if errors.Is(err, errs.ErrInvalidTask) {
+			return nil, errs.ErrInvalidTask
 		}
-		if errors.Is(err, newerr.ErrTaskNotFound) {
-			return nil, newerr.ErrTaskNotFound
+		if errors.Is(err, errs.ErrTaskNotFound) {
+			return nil, errs.ErrTaskNotFound
 		}
 		return nil, err
 	}
@@ -99,8 +100,8 @@ func (s *taskService) PatchTask(ctx context.Context, id int, updates map[string]
 
 func (s *taskService) DeleteTask(ctx context.Context, id int) error {
 	err := s.repo.DeleteTask(ctx, id)
-	if errors.Is(err, newerr.ErrTaskNotFound) {
-		return newerr.ErrTaskNotFound
+	if errors.Is(err, errs.ErrTaskNotFound) {
+		return errs.ErrTaskNotFound
 	}
 	return nil
 }
@@ -142,27 +143,41 @@ func (s *taskService) GetTasks(ctx context.Context, params url.Values) ([]models
 		if parsed, err := strconv.Atoi(l); err == nil && parsed > 0 && parsed <= 100 {
 			limit = parsed
 		} else {
-			return nil, newerr.ErrBadConvertation
+			return nil, errs.ErrBadConvertation
 		}
 	}
 	if p := params.Get("page"); p != "" {
 		if parsed, err := strconv.Atoi(p); err == nil && parsed > 0 {
 			page = parsed
 		} else {
-			return nil, newerr.ErrBadConvertation
+			return nil, errs.ErrBadConvertation
 		}
 	}
 	baseQuery += fmt.Sprintf(" LIMIT %d OFFSET %d", limit, (page-1)*limit)
 	tasks, err := s.repo.GetTasks(ctx, args, baseQuery)
 	if err != nil {
-		if errors.Is(err, newerr.ErrInvalidTask) {
-			return nil, newerr.ErrInvalidTask
+		if errors.Is(err, errs.ErrInvalidTask) {
+			return nil, errs.ErrInvalidTask
 		}
-		if errors.Is(err, newerr.ErrTaskNotFound) {
-			return nil, newerr.ErrTaskNotFound
+		if errors.Is(err, errs.ErrTaskNotFound) {
+			return nil, errs.ErrTaskNotFound
 		}
-		if errors.Is(err, newerr.ErrNotValidFields) {
-			return nil, newerr.ErrNotValidFields
+		if errors.Is(err, errs.ErrNotValidFields) {
+			return nil, errs.ErrNotValidFields
+		}
+		return nil, err
+	}
+	return tasks, nil
+}
+
+func (s *taskService) GetTasksByUserID(ctx context.Context, userID int) ([]models.Task, error) {
+	tasks, err := s.repo.GetTasksByUserID(ctx, userID)
+	if err != nil {
+		if errors.Is(err, errs.ErrInvalidTask) {
+			return nil, errs.ErrInvalidTask
+		}
+		if errors.Is(err, errs.ErrTaskNotFound) {
+			return nil, errs.ErrTaskNotFound
 		}
 		return nil, err
 	}

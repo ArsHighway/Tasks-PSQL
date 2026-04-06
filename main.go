@@ -4,24 +4,27 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/ArsHighway/Tasks-PSQL/config"
-	"github.com/ArsHighway/Tasks-PSQL/internal/handlers"
-	"github.com/ArsHighway/Tasks-PSQL/internal/repository"
-	"github.com/ArsHighway/Tasks-PSQL/internal/service"
-	"github.com/ArsHighway/Tasks-PSQL/routers"
+	"github.com/ArsHighway/Tasks-PSQL/internal/config"
+	taskHandler "github.com/ArsHighway/Tasks-PSQL/internal/handlers/taskHandler"
+	userHandler "github.com/ArsHighway/Tasks-PSQL/internal/handlers/userHandler"
+	taskRepository "github.com/ArsHighway/Tasks-PSQL/internal/repository/taskRepository"
+	userRepository "github.com/ArsHighway/Tasks-PSQL/internal/repository/userRepository"
+	"github.com/ArsHighway/Tasks-PSQL/internal/routers"
+	taskService "github.com/ArsHighway/Tasks-PSQL/internal/service/taskService"
+	userService "github.com/ArsHighway/Tasks-PSQL/internal/service/userService"
 )
 
 func main() {
 	pool := config.NewPostgressPool("postgres://arsver@localhost:5432/arsver")
 	defer pool.Close()
 
-	userRepo := repository.NewUserRepository(pool)
-	taskRepo := repository.NewTaskRepository(pool)
-	taskServ := service.NewTaskService(taskRepo)
-	userServ := service.NewUserService(userRepo, taskRepo)
+	userRepo := userRepository.NewUserRepository(pool)
+	taskRepo := taskRepository.NewTaskRepository(pool)
+	taskServ := taskService.NewTaskService(taskRepo)
+	userServ := userService.NewUserService(userRepo, taskRepo)
 
-	userHandler := handlers.NewUserHandler(userServ)
-	taskHandler := handlers.NewTaskHandler(taskServ)
+	userHandler := userHandler.NewUserHandler(userServ)
+	taskHandler := taskHandler.NewTaskHandler(taskServ)
 
 	r := routers.RegisterRoutes(userHandler, taskHandler)
 

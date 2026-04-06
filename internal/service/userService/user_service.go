@@ -1,4 +1,4 @@
-package service
+package user
 
 import (
 	"context"
@@ -6,18 +6,19 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ArsHighway/Tasks-PSQL/internal/errs"
 	"github.com/ArsHighway/Tasks-PSQL/internal/models"
-	"github.com/ArsHighway/Tasks-PSQL/internal/newerr"
-	"github.com/ArsHighway/Tasks-PSQL/internal/repository"
+	task "github.com/ArsHighway/Tasks-PSQL/internal/repository/taskRepository"
+	user "github.com/ArsHighway/Tasks-PSQL/internal/repository/userRepository"
 	"github.com/jackc/pgx/v5"
 )
 
 type userService struct {
-	userRepo repository.UserRepository
-	taskRepo repository.TaskRepository
+	userRepo user.UserRepository
+	taskRepo task.TaskRepository
 }
 
-func NewUserService(userRepo repository.UserRepository, taskRepo repository.TaskRepository) *userService {
+func NewUserService(userRepo user.UserRepository, taskRepo task.TaskRepository) *userService {
 	return &userService{userRepo: userRepo, taskRepo: taskRepo}
 }
 
@@ -68,8 +69,8 @@ func (s *userService) PatchUser(ctx context.Context, id int, updates map[string]
 
 func (s *userService) DeleteUser(ctx context.Context, id int) error {
 	err := s.userRepo.DeleteUser(ctx, id)
-	if errors.Is(err, newerr.ErrUserNotFound) {
-		return newerr.ErrUserNotFound
+	if errors.Is(err, errs.ErrUserNotFound) {
+		return errs.ErrUserNotFound
 	}
 	return err
 }

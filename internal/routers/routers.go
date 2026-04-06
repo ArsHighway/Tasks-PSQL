@@ -1,11 +1,12 @@
 package routers
 
 import (
-	"github.com/ArsHighway/Tasks-PSQL/internal/handlers"
+	task "github.com/ArsHighway/Tasks-PSQL/internal/handlers/taskHandler"
+	user "github.com/ArsHighway/Tasks-PSQL/internal/handlers/userHandler"
 	"github.com/go-chi/chi/v5"
 )
 
-func RegisterRoutes(userHandler handlers.UserHandler, taskHandler handlers.TaskHandler) chi.Router {
+func RegisterRoutes(userHandler user.UserHandler, taskHandler task.TaskHandler) chi.Router {
 	r := chi.NewRouter()
 	r.Route("/tasks", func(r chi.Router) {
 		r.Post("/", taskHandler.CreateTask)

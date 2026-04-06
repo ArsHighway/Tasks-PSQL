@@ -1,4 +1,4 @@
-package newerr
+package errs
 
 import "errors"
 

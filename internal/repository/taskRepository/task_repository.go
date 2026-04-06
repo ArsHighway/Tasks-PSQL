@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/ArsHighway/Tasks-PSQL/internal/errs"
 	"github.com/ArsHighway/Tasks-PSQL/internal/models"
-	"github.com/ArsHighway/Tasks-PSQL/internal/newerr"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -19,10 +19,10 @@ func NewTaskRepository(pool *pgxpool.Pool) *taskRepository {
 }
 
 type TaskRepository interface {
+	GetTaskWithID(ctx context.Context, id int) (*models.Task, error)
 	GetTasks(ctx context.Context, args []any, baseQuery string) ([]models.Task, error)
 	GetTasksByUserID(ctx context.Context, userID int) ([]models.Task, error)
 	CreateTask(ctx context.Context, t *models.Task) (*models.Task, error)
-	GetTaskWithID(ctx context.Context, id int) (*models.Task, error)
 	UpdateTask(ctx context.Context, id int, t *models.Task) (*models.Task, error)
 	PatchTask(ctx context.Context, id int, updates map[string]interface{}, parts []string, arg []interface{}) (*models.Task, error)
 	DeleteTask(ctx context.Context, id int) error
@@ -63,11 +63,11 @@ func (r *taskRepository) UpdateTask(ctx context.Context, id int, t *models.Task)
 		return nil, err
 	}
 	if cmdTag.RowsAffected() == 0 {
-		return nil, newerr.ErrTaskNotFound
+		return nil, errs.ErrTaskNotFound
 	}
 	if err := r.pool.QueryRow(ctx, `SELECT * FROM tasks WHERE id = $1`, id).Scan(&t.ID, &t.Title,
 		&t.Status, &t.UserID, &t.CreatedAt); err != nil {
-		return nil, newerr.ErrInvalidTask
+		return nil, errs.ErrInvalidTask
 	}
 	return t, nil
 }
@@ -75,19 +75,19 @@ func (r *taskRepository) UpdateTask(ctx context.Context, id int, t *models.Task)
 func (r *taskRepository) PatchTask(ctx context.Context, id int, updates map[string]interface{}, parts []string, arg []interface{}) (*models.Task, error) {
 	var t models.Task
 	if len(parts) == 0 {
-		return nil, newerr.ErrNotValidFields
+		return nil, errs.ErrNotValidFields
 	}
 	sql := fmt.Sprintf("UPDATE tasks SET %s WHERE id=$%d", strings.Join(parts, ", "), id)
 	cmdTag, err := r.pool.Exec(ctx, sql, arg...)
 	if err != nil {
-		return nil, newerr.ErrInvalidTask
+		return nil, errs.ErrInvalidTask
 	}
 	if cmdTag.RowsAffected() == 0 {
-		return nil, newerr.ErrTaskNotFound
+		return nil, errs.ErrTaskNotFound
 	}
 	if err := r.pool.QueryRow(ctx, `SELECT * FROM tasks WHERE id = $1`, id).Scan(&t.ID, &t.Title,
 		&t.Status, &t.UserID, &t.CreatedAt); err != nil {
-		return nil, newerr.ErrInvalidTask
+		return nil, errs.ErrInvalidTask
 	}
 	return &t, nil
 }
@@ -105,7 +105,7 @@ func (r *taskRepository) GetTasksByUserID(ctx context.Context, userID int) ([]mo
 	for rows.Next() {
 		var t models.Task
 		if err := rows.Scan(&t.ID, &t.Title, &t.Description, &t.Status, &t.UserID, &t.CreatedAt); err != nil {
-			return nil, newerr.ErrInvalidTask
+			return nil, errs.ErrInvalidTask
 		}
 		tasks = append(tasks, t)
 	}
@@ -118,7 +118,7 @@ func (r *taskRepository) DeleteTask(ctx context.Context, id int) error {
 		return err
 	}
 	if cmdTag.RowsAffected() == 0 {
-		return newerr.ErrTaskNotFound
+		return errs.ErrTaskNotFound
 	}
 	return nil
 }
@@ -126,7 +126,7 @@ func (r *taskRepository) DeleteTask(ctx context.Context, id int) error {
 func (r *taskRepository) GetTasks(ctx context.Context, args []any, baseQuery string) ([]models.Task, error) {
 	rows, err := r.pool.Query(ctx, baseQuery, args...)
 	if err != nil {
-		return nil, newerr.ErrTaskNotFound
+		return nil, errs.ErrTaskNotFound
 	}
 	defer rows.Close()
 	tasks := []models.Task{}
@@ -141,12 +141,12 @@ func (r *taskRepository) GetTasks(ctx context.Context, args []any, baseQuery str
 			&t.CreatedAt,
 		)
 		if err != nil {
-			return nil, newerr.ErrInvalidTask
+			return nil, errs.ErrInvalidTask
 		}
 		tasks = append(tasks, t)
 	}
 	if len(tasks) == 0 {
-		return nil, newerr.ErrNotValidFields
+		return nil, errs.ErrNotValidFields
 	}
 	return tasks, nil
 }

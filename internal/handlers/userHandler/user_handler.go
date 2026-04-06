@@ -1,4 +1,4 @@
-package handlers
+package user
 
 import (
 	"context"
@@ -9,18 +9,18 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/ArsHighway/Tasks-PSQL/internal/errs"
 	"github.com/ArsHighway/Tasks-PSQL/internal/models"
-	"github.com/ArsHighway/Tasks-PSQL/internal/newerr"
-	"github.com/ArsHighway/Tasks-PSQL/internal/service"
+	user "github.com/ArsHighway/Tasks-PSQL/internal/service/userService"
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 )
 
 type userHandler struct {
-	serv service.UserService
+	serv user.UserService
 }
 
-func NewUserHandler(serv service.UserService) *userHandler {
+func NewUserHandler(serv user.UserService) *userHandler {
 	return &userHandler{serv: serv}
 }
 
@@ -126,9 +126,9 @@ func (h *userHandler) PatchUser(w http.ResponseWriter, r *http.Request) {
 	u, err := h.serv.PatchUser(ctx, id, updates)
 	if err != nil {
 		switch {
-		case errors.Is(err, newerr.ErrUserNotFound):
+		case errors.Is(err, errs.ErrUserNotFound):
 			http.Error(w, "User not found", http.StatusNotFound)
-		case errors.Is(err, newerr.ErrNotValidFieldsUser):
+		case errors.Is(err, errs.ErrNotValidFieldsUser):
 			http.Error(w, "No valid fields to update", http.StatusBadRequest)
 		default:
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
@@ -163,7 +163,7 @@ func (h *userHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	log.Info("Delete user", "userID", id)
 	err = h.serv.DeleteUser(ctx, id)
 	if err != nil {
-		if errors.Is(err, newerr.ErrUserNotFound) {
+		if errors.Is(err, errs.ErrUserNotFound) {
 			http.Error(w, "User not found", http.StatusNotFound)
 		} else {
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
