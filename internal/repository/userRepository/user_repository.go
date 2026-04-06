@@ -2,11 +2,10 @@ package repository
 
 import (
 	"context"
-	"fmt"
-	"strings"
 
 	"github.com/ArsHighway/Tasks-PSQL/internal/errs"
 	"github.com/ArsHighway/Tasks-PSQL/internal/models"
+	"github.com/Masterminds/squirrel"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -21,7 +20,7 @@ func NewUserRepository(pool *pgxpool.Pool) *userRepository {
 type UserRepository interface {
 	CreateUser(ctx context.Context, u *models.User) (*models.User, error)
 	GetUserWithID(ctx context.Context, id int) (*models.User, error)
-	PatchUser(ctx context.Context, id int, updates map[string]interface{}, parts []string, arg []interface{}) (*models.User, error)
+	PatchUser(ctx context.Context, id int, updates map[string]interface{}) (*models.User, error)
 	DeleteUser(ctx context.Context, id int) error
 }
 
@@ -47,27 +46,31 @@ func (r *userRepository) GetUserWithID(ctx context.Context, id int) (*models.Use
 	return &u, nil
 }
 
-func (r *userRepository) PatchUser(ctx context.Context, id int, _ map[string]interface{}, parts []string, arg []interface{}) (*models.User, error) {
-	var u models.User
-	if len(parts) == 0 {
-		return nil, errs.ErrNotValidFieldsUser
+func (r *userRepository) PatchUser(ctx context.Context, id int, updates map[string]interface{}) (*models.User, error) {
+	qb := squirrel.Update("users").PlaceholderFormat(squirrel.Dollar)
+	for k, v := range updates {
+		qb.Set(k, v)
 	}
-	idx := len(arg) + 1
-	sql := fmt.Sprintf("UPDATE users SET %s WHERE id=$%d", strings.Join(parts, ", "), idx)
-	args := append(append([]interface{}{}, arg...), id)
+	qb = qb.Where(squirrel.Eq{"id": id})
+	sql, args, err := qb.ToSql()
+	if err != nil {
+		return nil, err
+	}
 	cmdTag, err := r.pool.Exec(ctx, sql, args...)
 	if err != nil {
-		return nil, errs.ErrInvalidUser
+		return nil, errs.ErrInvalidTask
 	}
 	if cmdTag.RowsAffected() == 0 {
-		return nil, errs.ErrUserNotFound
+		return nil, errs.ErrTaskNotFound
 	}
+	var u models.User
 	if err := r.pool.QueryRow(ctx, `SELECT id, name, email, created_at FROM users WHERE id = $1`, id).Scan(
 		&u.ID, &u.Name, &u.Email, &u.CreatedAt,
 	); err != nil {
 		return nil, errs.ErrInvalidUser
 	}
 	return &u, nil
+
 }
 
 func (r *userRepository) DeleteUser(ctx context.Context, id int) error {

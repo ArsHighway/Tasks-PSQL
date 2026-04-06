@@ -19,8 +19,6 @@ type MockTaskRepo struct {
 	ReceivedTask      *models.Task
 	ReceivedDeletedID int
 	ReceivedUpdates   map[string]interface{}
-	ReceivedParts     []string
-	ReceivedArg       []interface{}
 }
 
 func (m *MockTaskRepo) GetTaskWithID(ctx context.Context, id int) (*models.Task, error) {
@@ -57,11 +55,9 @@ func (m *MockTaskRepo) UpdateTask(ctx context.Context, id int, t *models.Task) (
 	return m.TaskToReturn, m.ErrToReturn
 }
 
-func (m *MockTaskRepo) PatchTask(ctx context.Context, id int, updates map[string]interface{}, parts []string, arg []interface{}) (*models.Task, error) {
+func (m *MockTaskRepo) PatchTask(ctx context.Context, id int, updates map[string]interface{}) (*models.Task, error) {
 	m.ReceivedID = id
 	m.ReceivedUpdates = updates
-	m.ReceivedParts = parts
-	m.ReceivedArg = arg
 	if m.TaskToReturn != nil && m.TaskToReturn.CreatedAt.IsZero() {
 		m.TaskToReturn.CreatedAt = time.Now()
 	}

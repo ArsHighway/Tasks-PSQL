@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/ArsHighway/Tasks-PSQL/internal/errs"
 	"github.com/ArsHighway/Tasks-PSQL/internal/models"
 	task "github.com/ArsHighway/Tasks-PSQL/internal/repository/taskRepository"
+	"github.com/Masterminds/squirrel"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -69,23 +71,18 @@ func (s *taskService) UpdateTask(ctx context.Context, id int, t *models.Task) (*
 }
 
 func (s *taskService) PatchTask(ctx context.Context, id int, updates map[string]interface{}) (*models.Task, error) {
-	var arg []interface{}
-	c := 1
 	allowed := map[string]bool{
 		"title":       true,
 		"description": true,
 		"status":      true,
 	}
-	parts := []string{}
+	values := make(map[string]interface{})
 	for k, v := range updates {
-		if !allowed[k] {
-			continue
+		if allowed[k] {
+			values[k] = v
 		}
-		arg = append(arg, v)
-		parts = append(parts, fmt.Sprintf("%v =$%d", k, c))
-		c++
 	}
-	task, err := s.repo.PatchTask(ctx, id, updates, parts, arg)
+	task, err := s.repo.PatchTask(ctx, id, values)
 	if err != nil {
 		if errors.Is(err, errs.ErrInvalidTask) {
 			return nil, errs.ErrInvalidTask
@@ -106,35 +103,49 @@ func (s *taskService) DeleteTask(ctx context.Context, id int) error {
 	return nil
 }
 
+func (s *taskService) GetTasksByUserID(ctx context.Context, userID int) ([]models.Task, error) {
+	tasks, err := s.repo.GetTasksByUserID(ctx, userID)
+	if err != nil {
+		if errors.Is(err, errs.ErrInvalidTask) {
+			return nil, errs.ErrInvalidTask
+		}
+		if errors.Is(err, errs.ErrTaskNotFound) {
+			return nil, errs.ErrTaskNotFound
+		}
+		return nil, err
+	}
+	return tasks, nil
+}
+
 func (s *taskService) GetTasks(ctx context.Context, params url.Values) ([]models.Task, error) {
-	baseQuery := "SELECT * FROM tasks WHERE 1=1"
-	args := []any{}
+	qb := squirrel.Select("*").
+		From("tasks").
+		PlaceholderFormat(squirrel.Dollar)
+
 	if status := params.Get("status"); status != "" {
-		baseQuery += fmt.Sprintf(" AND status = $%d", len(args)+1)
-		args = append(args, status)
+		qb = qb.Where(squirrel.Eq{"status": status})
 	}
 	if userID := params.Get("user_id"); userID != "" {
-		baseQuery += fmt.Sprintf(" AND user_id = $%d", len(args)+1)
-		args = append(args, userID)
+		qb = qb.Where(squirrel.Eq{"user_id": userID})
 	}
-	if createAt := params.Get("created_at"); createAt != "" {
-		baseQuery += fmt.Sprintf(" AND created_at = $%d", len(args)+1)
-		args = append(args, createAt)
+	if createdAt := params.Get("created_at"); createdAt != "" {
+		qb = qb.Where(squirrel.Eq{"created_at": createdAt})
 	}
-	allowed := map[string]bool{
-		"status":     true,
-		"user_id":    true,
-		"created_at": true,
+
+	allowedSorts := map[string]string{
+		"created_at": "created_at",
+		"title":      "title",
+		"status":     "status",
 	}
 	sortBy := params.Get("sort_by")
-	orderBy := params.Get("order")
-	if sortBy != "" && allowed[sortBy] {
-		if orderBy != "desc" {
-			orderBy = "asc"
+	order := strings.ToUpper(params.Get("order_by"))
+	if col, ok := allowedSorts[sortBy]; ok {
+		if order != "ASC" && order != "DESC" {
+			order = "ASC"
 		}
-		baseQuery += fmt.Sprintf(" ORDER BY %s %s", sortBy, orderBy)
+		qb = qb.OrderBy(fmt.Sprintf("%s %s", col, order))
 	} else {
-		baseQuery += " ORDER BY created_at DESC"
+		qb = qb.OrderBy("created_at DESC")
 	}
 
 	limit := 10
@@ -153,33 +164,13 @@ func (s *taskService) GetTasks(ctx context.Context, params url.Values) ([]models
 			return nil, errs.ErrBadConvertation
 		}
 	}
-	baseQuery += fmt.Sprintf(" LIMIT %d OFFSET %d", limit, (page-1)*limit)
-	tasks, err := s.repo.GetTasks(ctx, args, baseQuery)
-	if err != nil {
-		if errors.Is(err, errs.ErrInvalidTask) {
-			return nil, errs.ErrInvalidTask
-		}
-		if errors.Is(err, errs.ErrTaskNotFound) {
-			return nil, errs.ErrTaskNotFound
-		}
-		if errors.Is(err, errs.ErrNotValidFields) {
-			return nil, errs.ErrNotValidFields
-		}
-		return nil, err
-	}
-	return tasks, nil
-}
+	qb = qb.Limit(uint64(limit)).Offset(uint64((page - 1) * limit))
 
-func (s *taskService) GetTasksByUserID(ctx context.Context, userID int) ([]models.Task, error) {
-	tasks, err := s.repo.GetTasksByUserID(ctx, userID)
+	sql, args, err := qb.ToSql()
+	tasks, err := s.repo.GetTasks(ctx, args, sql)
 	if err != nil {
-		if errors.Is(err, errs.ErrInvalidTask) {
-			return nil, errs.ErrInvalidTask
-		}
-		if errors.Is(err, errs.ErrTaskNotFound) {
-			return nil, errs.ErrTaskNotFound
-		}
 		return nil, err
 	}
+
 	return tasks, nil
 }

@@ -14,8 +14,6 @@ type MockUserRepo struct {
 	ReceivedUser    *models.User
 	ReceivedID      int
 	ReceivedUpdates map[string]interface{}
-	ReceivedParts   []string
-	ReceivedArg     []interface{}
 }
 
 func (m *MockUserRepo) CreateUser(ctx context.Context, u *models.User) (*models.User, error) {
@@ -28,11 +26,9 @@ func (m *MockUserRepo) GetUserWithID(ctx context.Context, id int) (*models.User,
 	return m.UserToReturn, m.ErrToReturn
 }
 
-func (m *MockUserRepo) PatchUser(ctx context.Context, id int, updates map[string]interface{}, parts []string, arg []interface{}) (*models.User, error) {
+func (m *MockUserRepo) PatchUser(ctx context.Context, id int, updates map[string]interface{}) (*models.User, error) {
 	m.ReceivedID = id
 	m.ReceivedUpdates = updates
-	m.ReceivedParts = parts
-	m.ReceivedArg = arg
 	if m.UserToReturn != nil && m.UserToReturn.CreatedAt.IsZero() {
 		m.UserToReturn.CreatedAt = time.Now()
 	}

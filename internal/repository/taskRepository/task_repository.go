@@ -2,11 +2,10 @@ package repository
 
 import (
 	"context"
-	"fmt"
-	"strings"
 
 	"github.com/ArsHighway/Tasks-PSQL/internal/errs"
 	"github.com/ArsHighway/Tasks-PSQL/internal/models"
+	sq "github.com/Masterminds/squirrel"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -24,7 +23,8 @@ type TaskRepository interface {
 	GetTasksByUserID(ctx context.Context, userID int) ([]models.Task, error)
 	CreateTask(ctx context.Context, t *models.Task) (*models.Task, error)
 	UpdateTask(ctx context.Context, id int, t *models.Task) (*models.Task, error)
-	PatchTask(ctx context.Context, id int, updates map[string]interface{}, parts []string, arg []interface{}) (*models.Task, error)
+	PatchTask(ctx context.Context, id int, updates map[string]interface{},
+	) (*models.Task, error)
 	DeleteTask(ctx context.Context, id int) error
 }
 
@@ -72,21 +72,41 @@ func (r *taskRepository) UpdateTask(ctx context.Context, id int, t *models.Task)
 	return t, nil
 }
 
-func (r *taskRepository) PatchTask(ctx context.Context, id int, updates map[string]interface{}, parts []string, arg []interface{}) (*models.Task, error) {
-	var t models.Task
-	if len(parts) == 0 {
-		return nil, errs.ErrNotValidFields
+func (r *taskRepository) PatchTask(ctx context.Context, id int, updates map[string]interface{}) (*models.Task, error) {
+	qb := sq.
+		Update("tasks").
+		PlaceholderFormat(sq.Dollar)
+
+	for k, v := range updates {
+		qb = qb.Set(k, v)
 	}
-	sql := fmt.Sprintf("UPDATE tasks SET %s WHERE id=$%d", strings.Join(parts, ", "), id)
-	cmdTag, err := r.pool.Exec(ctx, sql, arg...)
+	qb = qb.Where(sq.Eq{"id": id})
+	sql, args, err := qb.ToSql()
+	if err != nil {
+		return nil, err
+	}
+	cmdTag, err := r.pool.Exec(ctx, sql, args...)
 	if err != nil {
 		return nil, errs.ErrInvalidTask
 	}
 	if cmdTag.RowsAffected() == 0 {
 		return nil, errs.ErrTaskNotFound
 	}
-	if err := r.pool.QueryRow(ctx, `SELECT * FROM tasks WHERE id = $1`, id).Scan(&t.ID, &t.Title,
-		&t.Status, &t.UserID, &t.CreatedAt); err != nil {
+	var t models.Task
+
+	err = r.pool.QueryRow(ctx,
+		`SELECT id, title, description, status, user_id, created_at
+         FROM tasks WHERE id = $1`,
+		id,
+	).Scan(
+		&t.ID,
+		&t.Title,
+		&t.Description,
+		&t.Status,
+		&t.UserID,
+		&t.CreatedAt,
+	)
+	if err != nil {
 		return nil, errs.ErrInvalidTask
 	}
 	return &t, nil

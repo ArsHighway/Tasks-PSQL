@@ -64,7 +64,7 @@ func (s *userService) PatchUser(ctx context.Context, id int, updates map[string]
 		parts = append(parts, fmt.Sprintf("%s = $%d", k, c))
 		c++
 	}
-	return s.userRepo.PatchUser(ctx, id, updates, parts, arg)
+	return s.userRepo.PatchUser(ctx, id, updates)
 }
 
 func (s *userService) DeleteUser(ctx context.Context, id int) error {

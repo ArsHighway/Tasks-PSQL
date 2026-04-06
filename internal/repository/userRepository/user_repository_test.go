@@ -128,7 +128,6 @@ func TestUserRepository_PatchUser(t *testing.T) {
 	pool := testDBPool(t)
 	ctx := context.Background()
 	repo := user.NewUserRepository(pool)
-
 	email := fmt.Sprintf("repo_patch_%d_%s@example.com", time.Now().UnixNano(), t.Name())
 	var id int
 	in := &models.User{
@@ -143,10 +142,12 @@ func TestUserRepository_PatchUser(t *testing.T) {
 		t.Fatalf("seed user: %v", err)
 	}
 
-	parts := []string{"name=$1", "email=$2"}
-	args := []interface{}{"Updated Name", "updated_" + email}
+	updates := map[string]interface{}{
+		"name":  "Updated Name",
+		"email": "updated_" + email,
+	}
 
-	got, err := repo.PatchUser(ctx, id, nil, parts, args)
+	got, err := repo.PatchUser(ctx, id, updates)
 	if err != nil {
 		t.Fatalf("PatchUser: %v", err)
 	}
@@ -154,7 +155,6 @@ func TestUserRepository_PatchUser(t *testing.T) {
 	if got.Name != "Updated Name" || got.Email != "updated_"+email {
 		t.Fatalf("stored row mismatch: got %+v, want name/email updated", got)
 	}
-
 	t.Cleanup(func() {
 		_, err := pool.Exec(ctx, `DELETE FROM users WHERE id = $1`, id)
 		if err != nil {

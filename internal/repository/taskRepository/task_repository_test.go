@@ -222,9 +222,7 @@ func TestTaskRepository_PatchTask(t *testing.T) {
 		"description": "обновлённое описание",
 		"status":      "done",
 	}
-	parts := []string{"title", "description", "status"}
-	arg := []interface{}{"новый заголовок", "обновлённое описание", "done"}
-	got, err := repo.PatchTask(ctx, id, updates, parts, arg)
+	got, err := repo.PatchTask(ctx, id, updates)
 	if err != nil {
 		t.Fatalf("PatchTask: %v", err)
 	}
